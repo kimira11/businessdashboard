@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Business Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { max-width: 900px; margin: auto; padding: 20px; font-family: Arial, sans-serif; }
+    input, button { padding: 10px; font-size: 16px; }
+    input { width: 75%; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background: #f4f4f4; }
+    .kpi { margin: 20px 0; font-weight: bold; font-size: 1.2em; }
+  </style>
+</head>
+<body>
+
+  <h1>Business Dashboard</h1>
+
+  <form id="queryForm">
+    <input type="text" id="question" placeholder="Enter business question here" required />
+    <button type="submit">Ask</button>
+  </form>
+
+  <div id="error" style="color:red; margin-top:10px;"></div>
+
+  <div class="kpi" id="totalRevenue"></div>
+
+  <table id="resultsTable">
+    <thead id="tableHead"></thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <canvas id="salesChart" width="900" height="300" style="margin-top: 40px;"></canvas>
+
+  <script>
+    const form = document.getElementById('queryForm');
+    const questionInput = document.getElementById('question');
+    const errorDiv = document.getElementById('error');
+    const totalRevenueDiv = document.getElementById('totalRevenue');
+    const tableHead = document.getElementById('tableHead');
+    const tableBody = document.getElementById('tableBody');
+    const ctx = document.getElementById('salesChart').getContext('2d');
+    let chart;
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      errorDiv.textContent = '';
+      totalRevenueDiv.textContent = '';
+      tableHead.innerHTML = '';
+      tableBody.innerHTML = '';
+      if(chart) chart.destroy();
+
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      try {
+        const response = await fetch('http://127.0.0.1:5000/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question })
+        });
+        if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
+        const data = await response.json();
+
+        if (data.results.length === 0) {
+          errorDiv.textContent = 'No results found.';
+          return;
+        }
+
+        // Display totalRevenue KPI if available
+        if (data.results[0].total_revenue !== undefined) {
+          totalRevenueDiv.textContent = `Total Revenue: $${data.results[0].total_revenue}`;
+        }
+
+        // Build table
+        const keys = Object.keys(data.results[0]);
+        const headRow = document.createElement('tr');
+        keys.forEach(key => {
+          const th = document.createElement('th');
+          th.textContent = key.toUpperCase();
+          headRow.appendChild(th);
+        });
+        tableHead.appendChild(headRow);
+
+        data.results.forEach(row => {
+          const tr = document.createElement('tr');
+          keys.forEach(key => {
+            const td = document.createElement('td');
+            td.textContent = row[key];
+            tr.appendChild(td);
+          });
+          tableBody.appendChild(tr);
+        });
+
+        // Prepare sales date & revenue data for bar chart
+        const salesData = data.results.filter(r => r.salesdate && r.revenue);
+        if (salesData.length > 0) {
+          const labels = salesData.map(r => r.salesdate);
+          const revenues = salesData.map(r => Number(r.revenue));
+
+          chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: "Sales Revenue",
+                data: revenues,
+                backgroundColor: 'rgba(54, 162, 235, 0.6)'
+              }]
+            },
+            options: {
+              scales: {
+                x: {
+                  title: { display: true, text: 'Date' }
+                },
+                y: {
+                  beginAtZero: true,
+                  title: { display: true, text: 'Revenue' }
+                }
+              }
+            }
+          });
+        }
+
+      } catch (error) {
+        errorDiv.textContent = error.message;
+      }
+    });
+  </script>
+
+</body>
+</html>
